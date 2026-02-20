@@ -1,0 +1,19 @@
+# Terka — závislosti
+# Instalace: pip install -r requirements.txt
+
+# STT — Speech to Text
+faster-whisper>=1.0.0
+
+# LLM — Ollama klient
+ollama>=0.4.0
+
+# Audio — záznam a přehrávání
+sounddevice>=0.4.6
+soundfile>=0.12.1
+numpy>=1.24.0
+
+# TTS — Text to Speech
+kokoro-onnx>=0.3.0
+
+# Matematika (dependency pro scipy/kokoro)
+scipy>=1.11.0
