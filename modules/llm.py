@@ -40,9 +40,10 @@ def check_connection() -> bool:
         return False
 
 
-def chat(user_text: str) -> str:
+def chat(user_text: str, stop_check=None) -> str:
     """
-    Odešle zprávu uživatele modelu a vrátí odpověď.
+    Odešle zprávu uživatele modelu a vrátí odpověď (streaming).
+    stop_check: volitelný callable() → True = přeruš generování.
     Udržuje historii konverzace.
     """
     global _history
@@ -56,14 +57,29 @@ def chat(user_text: str) -> str:
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + _history
 
     client = _get_client()
-    response = client.chat(
+    stream = client.chat(
         model=OLLAMA_MODEL,
         messages=messages,
         options=LLM_OPTIONS,
+        stream=True,
     )
 
-    reply = response.message.content.strip()
-    _history.append({"role": "assistant", "content": reply})
+    parts: list[str] = []
+    for chunk in stream:
+        if stop_check and stop_check():
+            break
+        token = chunk.message.content
+        if token:
+            parts.append(token)
+
+    reply = "".join(parts).strip()
+
+    if reply:
+        _history.append({"role": "assistant", "content": reply})
+    else:
+        # Přerušeno hned — vyjmi uživatelovu zprávu z historie
+        _history.pop()
+
     return reply
 
 

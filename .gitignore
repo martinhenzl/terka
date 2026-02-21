@@ -16,6 +16,17 @@ env/
 models/
 !models/.gitkeep
 
+# Fish Speech — klonovaný repozitář, jeho modely a stažené binárky
+fish-speech/
+ffmpeg.exe
+ffprobe.exe
+asr-label-win-x64.exe
+
+# Referenční hlasové vzorky (osobní audio — nesdílet)
+voice_samples/*.wav
+voice_samples/*.mp3
+voice_samples/*.flac
+
 # Whisper cache
 .cache/
 

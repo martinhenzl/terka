@@ -6,7 +6,7 @@ from __future__ import annotations
 import numpy as np
 from faster_whisper import WhisperModel
 
-from config import WHISPER_MODEL_SIZE, WHISPER_DEVICE, WHISPER_LANGUAGE, WHISPER_BEAM_SIZE
+from config import WHISPER_MODEL_SIZE, WHISPER_DEVICE, WHISPER_LANGUAGE, WHISPER_BEAM_SIZE, WHISPER_INITIAL_PROMPT
 
 _model: WhisperModel | None = None
 
@@ -17,9 +17,9 @@ def _get_model() -> WhisperModel:
         device = WHISPER_DEVICE
         if device == "auto":
             try:
-                import torch
-                device = "cuda" if torch.cuda.is_available() else "cpu"
-            except ImportError:
+                import ctranslate2
+                device = "cuda" if ctranslate2.get_cuda_device_count() > 0 else "cpu"
+            except Exception:
                 device = "cpu"
 
         compute_type = "float16" if device == "cuda" else "int8"
@@ -40,6 +40,7 @@ def transcribe(audio: np.ndarray) -> str:
         audio,
         language=WHISPER_LANGUAGE,
         beam_size=WHISPER_BEAM_SIZE,
+        initial_prompt=WHISPER_INITIAL_PROMPT,
         vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 400},
     )

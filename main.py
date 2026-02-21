@@ -4,6 +4,25 @@ Spusť: python main.py
 """
 
 import sys
+import os
+import msvcrt
+
+# Přidej CUDA DLLs do PATH (nvidia-cublas-cu12, nvidia-cudnn-cu12 z pip)
+# Musíme přidat do PATH (ne jen os.add_dll_directory), aby ONNX Runtime
+# mohl najít závislé DLLy při načítání CUDA provideru.
+def _add_cuda_dlls() -> None:
+    import site
+    extra: list[str] = []
+    for sp in site.getsitepackages():
+        for pkg in ("cublas", "cudnn", "cuda_runtime", "cufft", "curand"):
+            bin_path = os.path.join(sp, "nvidia", pkg, "bin")
+            if os.path.isdir(bin_path):
+                os.add_dll_directory(bin_path)
+                extra.append(bin_path)
+    if extra:
+        os.environ["PATH"] = os.pathsep.join(extra) + os.pathsep + os.environ.get("PATH", "")
+
+_add_cuda_dlls()
 
 BANNER = """
 ╔══════════════════════════════════════════════╗
@@ -11,6 +30,7 @@ BANNER = """
 ║         Hlasová asistentka (open-source)     ║
 ╠══════════════════════════════════════════════╣
 ║  Enter         → nahrát hlas (mluv)          ║
+║  Esc           → přerušit (kdykoli)          ║
 ║  Napsat text   → přeskočit mikrofon          ║
 ║  reset         → smazat historii             ║
 ║  zařízení      → zobrazit mikrofonů          ║
@@ -39,12 +59,12 @@ def main() -> None:
     print()
     stt.transcribe(np.zeros(1600, dtype="float32"))  # pre-warm — stáhne model pokud chybí
 
-    # Přednahraj TTS model
+    # Přednahraj / ověř TTS (Fish Speech server)
     print()
     try:
-        tts._get_kokoro()
-    except FileNotFoundError as e:
-        print(f"\n[CHYBA] {e}")
+        tts.initialize()
+    except Exception as e:
+        print(f"\n[CHYBA TTS] {e}")
         sys.exit(1)
 
     print("\n[Terka je připravena!]\n")
@@ -56,6 +76,7 @@ def main() -> None:
             user_input = input("Ty: ").strip()
         except (KeyboardInterrupt, EOFError):
             print("\nNa shledanou!")
+            tts.shutdown()
             break
 
         # ── Příkazy ───────────────────────────────────────────────────────────
@@ -74,7 +95,8 @@ def main() -> None:
 
         elif user_input.lower() in ("quit", "exit", "konec", "q"):
             print("Terka: Čau čau! Zlé plány si nechám na jindy. Fufufu~")
-            tts.speak("Bye bye! I'll keep my evil plans for later. Fufufu.")
+            tts.speak("Čau čau! Zlé plány si nechám na jindy. Fufufu.")
+            tts.shutdown()
             break
 
         elif user_input.lower() == "reset":
@@ -98,10 +120,22 @@ def main() -> None:
         print(f"\nTy: {user_input}")
         print("Terka: ...", end="", flush=True)
 
+        # Esc přeruší generování mezi tokeny
+        _esc = [False]
+        def _stop_check() -> bool:
+            if not _esc[0] and msvcrt.kbhit():
+                if msvcrt.getch() == b'\x1b':
+                    _esc[0] = True
+            return _esc[0]
+
         try:
-            reply = llm.chat(user_input)
+            reply = llm.chat(user_input, stop_check=_stop_check)
         except Exception as e:
             print(f"\r[CHYBA LLM]: {e}")
+            continue
+
+        if _esc[0] or not reply:
+            print("\r  Přerušeno.                        ")
             continue
 
         print(f"\rTerka: {reply}\n")

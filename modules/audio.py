@@ -3,6 +3,7 @@ Audio modul — záznam z mikrofonu s detekcí ticha.
 """
 
 from __future__ import annotations
+import msvcrt
 import numpy as np
 import sounddevice as sd
 
@@ -40,7 +41,7 @@ def record_until_silence(device: int | None = None) -> np.ndarray | None:
     required_silence = int(SILENCE_DURATION * chunks_per_sec)
     min_chunks       = int(MIN_RECORD_DURATION * chunks_per_sec)
 
-    print("\n  Poslouchám... (mluv, po tichu se automaticky zastavím)")
+    print("\n  Poslouchám... (mluv, po tichu se automaticky zastavím — Esc = zrušit)")
 
     try:
         stream_kw: dict = dict(
@@ -55,6 +56,13 @@ def record_until_silence(device: int | None = None) -> np.ndarray | None:
         with sd.InputStream(**stream_kw) as stream:
             dots = 0
             while True:
+                # Esc = zrušit nahrávání
+                if msvcrt.kbhit():
+                    key = msvcrt.getch()
+                    if key == b'\x1b':
+                        print("\r  Nahrávání zrušeno.          ")
+                        return None
+
                 data, _ = stream.read(CHUNK_SIZE)
                 rms = float(np.sqrt(np.mean(data ** 2)))
 
@@ -95,7 +103,18 @@ def record_until_silence(device: int | None = None) -> np.ndarray | None:
     return audio
 
 
-def play_audio(samples: np.ndarray, sample_rate: int) -> None:
-    """Přehraje numpy pole jako audio a počká na dokončení."""
+def play_audio(samples: np.ndarray, sample_rate: int) -> bool:
+    """Přehraje numpy pole jako audio. Vrací True pokud bylo přerušeno Escem."""
+    import time
     sd.play(samples, samplerate=sample_rate)
+    try:
+        while sd.get_stream().active:
+            if msvcrt.kbhit():
+                if msvcrt.getch() == b'\x1b':
+                    sd.stop()
+                    return True
+            time.sleep(0.05)
+    except Exception:
+        pass
     sd.wait()
+    return False
