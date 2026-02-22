@@ -3,6 +3,7 @@ STT module — Speech to Text using faster-whisper.
 """
 
 from __future__ import annotations
+import gc
 import numpy as np
 from faster_whisper import WhisperModel
 
@@ -29,10 +30,11 @@ def _get_model() -> WhisperModel:
     return _model
 
 
-def transcribe(audio: np.ndarray) -> str:
+def transcribe(audio: np.ndarray, silent: bool = False) -> str:
     """
     Transcribe a numpy audio array to text.
     Returns empty string if nothing was recognized.
+    Pass silent=True to suppress all console output (e.g. during warmup).
     """
     model = _get_model()
 
@@ -49,10 +51,22 @@ def transcribe(audio: np.ndarray) -> str:
 
     text = " ".join(seg.text for seg in segments).strip()
 
-    if text:
-        lang_info = f" [{info.language}, {info.language_probability:.0%}]"
-        print(f"  Recognized{lang_info}: {text}")
-    else:
-        print("  Nothing recognized.")
+    if not silent:
+        if text:
+            lang_info = f" [{info.language}, {info.language_probability:.0%}]"
+            print(f"  Recognized{lang_info}: {text}")
+        else:
+            print("  Nothing recognized.")
 
     return text
+
+
+def shutdown() -> None:
+    """Explicitly destroy WhisperModel to free CUDA memory before process exit.
+    gc.collect() forces the CTranslate2 destructor to run NOW, while the CUDA
+    context is still alive. Without this, ctranslate2's CudaAsyncAllocator throws
+    during DLL_PROCESS_DETACH (after ExitProcess) → STATUS_STACK_BUFFER_OVERRUN."""
+    global _model
+    if _model is not None:
+        _model = None
+        gc.collect()

@@ -28,10 +28,14 @@ def list_input_devices() -> None:
     print()
 
 
-def record_until_silence(device: int | None = None) -> np.ndarray | None:
+def record_until_silence(
+    device: int | None = None,
+    esc_out: list[bool] | None = None,
+) -> np.ndarray | None:
     """
     Record from microphone until silence is detected.
     Returns numpy float32 array, or None if nothing was captured.
+    If Esc is pressed, sets esc_out[0] = True (if provided) and returns None.
     """
     chunks: list[np.ndarray] = []
     silence_chunks   = 0
@@ -60,6 +64,8 @@ def record_until_silence(device: int | None = None) -> np.ndarray | None:
                 if msvcrt.kbhit():
                     key = msvcrt.getch()
                     if key == b'\x1b':
+                        if esc_out is not None:
+                            esc_out[0] = True
                         print("\r  Recording cancelled.          ")
                         return None
 

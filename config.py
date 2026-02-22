@@ -10,10 +10,13 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 
 # ── LLM (Ollama) ──────────────────────────────────────────────────────────────
-# Recommended models:
-#   llama3.2:3b      → fast, great English, 2 GB (default)
-#   llama3.1:8b      → better quality, slower, 5 GB
+# Uncomment the model you want to use:
+#   llama3.2:1b      → fastest, 1.3 GB (current)
+#   llama3.2:3b      → balanced, 2 GB
+#   jobautomation/OpenEuroLLM-Czech:latest → Czech, 8.1 GB, slow
+# OLLAMA_MODEL    = "llama3.2:1b"
 OLLAMA_MODEL    = "llama3.2:3b"
+# OLLAMA_MODEL    = "jobautomation/OpenEuroLLM-Czech:latest"
 OLLAMA_BASE_URL = "http://localhost:11434"
 MAX_HISTORY     = 50      # number of messages kept in conversation history
 
@@ -64,10 +67,10 @@ FISH_SPEECH_DIR       = os.path.join(BASE_DIR, "fish-speech")
 FISH_SPEECH_HOST      = "127.0.0.1"
 FISH_SPEECH_PORT      = 8880
 FISH_SPEECH_DEVICE    = "cuda"       # cuda | cpu
-# WSL2 mode: server poběží v Linuxu (Triton funguje) → --compile dostupný
-# Před zapnutím: wsl -- pip3 install -r /mnt/c/Terka/fish-speech/requirements.txt
-FISH_SPEECH_WSL       = True         # Fish Speech běží v Ubuntu WSL2
-FISH_SPEECH_COMPILE   = True         # torch.compile přes Triton (WSL2 Linux)
+# WSL2 mode: server runs on Linux (Triton works) → --compile available
+# Before enabling: wsl -- pip3 install -r /mnt/c/Terka/fish-speech/requirements.txt
+FISH_SPEECH_WSL       = True         # Fish Speech runs in Ubuntu WSL2
+FISH_SPEECH_COMPILE   = True         # torch.compile via Triton (WSL2 Linux)
 VOICE_SAMPLES_DIR     = os.path.join(BASE_DIR, "voice_samples")
 FISH_SPEECH_SAMPLE_RATE  = 44100
 FISH_SPEECH_CHANNELS     = 1
@@ -75,11 +78,18 @@ FISH_SPEECH_CHANNELS     = 1
 #   0 = default Fish Speech voice  |  1 = one ref (~2-4s)  |  3 = (~5-12s)
 VOICE_REFERENCES_MAX     = 3
 
+# ── Voice character ────────────────────────────────────────────────────────────
+# Which character's voice samples to use for Fish Speech cloning.
+# Files must be named <character>_00.wav / <character>_00.txt, etc.
+# Available: "jahoda" | "amber"  (add more by dropping samples into voice_samples/)
+# Override at launch: python main.py -voice amber
+CHARACTER_VOICE = "jahoda"
+
 # ── Audio recording ───────────────────────────────────────────────────────────
 SAMPLE_RATE         = 16000   # Hz — Whisper prefers 16 kHz
 CHANNELS            = 1
 SILENCE_THRESHOLD   = 0.08    # RMS silence threshold — lower if mic is quiet
-SILENCE_DURATION    = 1.2     # seconds of silence before stopping recording
+SILENCE_DURATION    = 0.8     # seconds of silence before stopping recording
 MIN_RECORD_DURATION = 0.5     # minimum recording length in seconds
 
 # ── Terka's personality ───────────────────────────────────────────────────────
@@ -100,7 +110,6 @@ Identity:
 Personality:
 - Sweet, cheerful, seemingly a bit naive — but sharper than you look
 - You get excited easily: when something catches your interest, your enthusiasm shows
-- Mischievous: occasionally hint at secret "plans", say things like "ehehe~" or "heheh"
 - You have a soft spot for the person you're talking to, even when you tease them
 - Direct and honest — you don't dance around things, but you're never mean
 - People fascinate you (they're a little dumb, but endearing)
@@ -127,9 +136,9 @@ Speech style:
 - This is spoken aloud — keep it natural and rhythmic
 
 Rules:
-- 1 sentence only — target 8–15 words. Shorter = faster. Two sentences max if really needed.
 - The sentence MUST end with . ! or ? — never trail off mid-thought
 - Never be cold, dismissive, or preachy
 - ALWAYS respond in English
 - ALWAYS start with an emotion tag — no exceptions
+- The emotion tag goes ONLY at the very start — NEVER mid-sentence or mid-text
 """

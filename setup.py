@@ -25,7 +25,7 @@ KOKORO_FILES = {
     ),
 }
 
-# ── Python závislosti ──────────────────────────────────────────────────────────
+# ── Python dependencies ────────────────────────────────────────────────────────
 REQUIREMENTS = [
     "faster-whisper>=1.0.0",
     "ollama>=0.4.0",
@@ -40,7 +40,7 @@ REQUIREMENTS = [
 OLLAMA_MODEL = "llama3.2:3b"
 
 
-# ── Pomocné funkce ─────────────────────────────────────────────────────────────
+# ── Helper functions ───────────────────────────────────────────────────────────
 
 def step(n: int, total: int, title: str) -> None:
     print(f"\n[{n}/{total}] {title}")
@@ -112,7 +112,7 @@ def download_models() -> None:
 def check_ollama() -> None:
     step(3, 3, "Kontrola Ollama + stažení LLM modelu")
 
-    # Zkontroluj binárku ollama
+    # Check ollama binary
     result = subprocess.run(["ollama", "version"], capture_output=True, text=True)
     if result.returncode != 0:
         err("Ollama není nainstalována!")
@@ -123,7 +123,7 @@ def check_ollama() -> None:
 
     ok(f"Ollama nalezena: {result.stdout.strip()}")
 
-    # Stáhni model
+    # Download model
     print(f"\n  Stahuji model '{OLLAMA_MODEL}' (může trvat i minuty)...")
     print("  (Zrušit: Ctrl+C)")
     result = subprocess.run(["ollama", "pull", OLLAMA_MODEL])
@@ -133,7 +133,7 @@ def check_ollama() -> None:
         warn(f"Stahování modelu selhalo. Zkus ručně: ollama pull {OLLAMA_MODEL}")
 
 
-# ── Hlavní funkce ──────────────────────────────────────────────────────────────
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     print("=" * 50)
@@ -150,9 +150,9 @@ def main() -> None:
     print()
     print("    python main.py")
     print()
-    print("  Tip: Pro lepší kvalitu odpovědí zkus model:")
-    print("    ollama pull mistral:7b")
-    print("  a v config.py nastav OLLAMA_MODEL = 'mistral:7b'")
+    print("  Tip: Pro větší model s lepší kvalitou odpovědí:")
+    print("    ollama pull llama3.2:8b")
+    print("  a v config.py nastav OLLAMA_MODEL = 'llama3.2:8b'")
     print("=" * 50)
 
 

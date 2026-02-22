@@ -33,6 +33,9 @@ voice_samples/*.flac
 # Ollama setup binary
 OllamaSetup.exe
 
+# Crash dumps
+*.dmp
+
 # IDE
 .vscode/settings.json
 .idea/

@@ -126,6 +126,36 @@ def chat(user_text: str, stop_check=None) -> str:
     return " ".join(chat_sentences(user_text, stop_check=stop_check))
 
 
+def greet() -> str:
+    """
+    Generate an opening greeting from Terka.
+    Adds only the assistant reply to history (no user message logged).
+    """
+    global _history
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": "(The conversation just started. Greet the user — one short sentence.)"},
+    ]
+
+    client = _get_client()
+    stream = client.chat(
+        model=OLLAMA_MODEL,
+        messages=messages,
+        options=LLM_OPTIONS,
+        stream=True,
+    )
+
+    parts: list[str] = []
+    for chunk in stream:
+        parts.append(chunk.message.content or "")
+
+    reply = _ensure_complete("".join(parts).strip())
+    if reply:
+        _history.append({"role": "assistant", "content": reply})
+    return reply
+
+
 def reset_history() -> None:
     """Clear conversation history."""
     global _history

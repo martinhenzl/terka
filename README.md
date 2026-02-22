@@ -43,8 +43,9 @@ pip install -r requirements.txt
 Download and install [Ollama](https://ollama.com/download), then pull a model:
 
 ```bash
-ollama pull llama3.2:3b       # fast, default (~2 GB)
-ollama pull llama3.1:8b       # better quality (~5 GB)
+ollama pull llama3.2:3b       # balanced, default (~2 GB)
+ollama pull llama3.2:1b       # fastest, lower quality (~1.3 GB)
+ollama pull llama3.2:8b       # better quality, slower (~5 GB)
 ```
 
 Ollama must be running in the background when you start Terka (`ollama serve`).
@@ -132,7 +133,7 @@ FISH_SPEECH_WSL     = True   # start server in Ubuntu WSL2
 FISH_SPEECH_COMPILE = True   # enable torch.compile (Triton)
 ```
 
-First startup will take ~30–60 extra seconds to compile. Subsequent starts are fast.
+First startup with `--compile` can take **5–10 minutes** (torch.compile + model load). Subsequent starts are fast (~1 min).
 
 ---
 
@@ -160,6 +161,7 @@ First startup will take ~30–60 extra seconds to compile. Subsequent starts are
 | `VOICE_REFERENCES_MAX` | `3` | Voice samples used for cloning — `0` = default voice (fastest) |
 | `FISH_SPEECH_WSL` | `False` | Run Fish Speech server in WSL2 Ubuntu |
 | `FISH_SPEECH_COMPILE` | `False` | Enable `--compile` (requires WSL2) |
+| `SILENCE_DURATION` | `1.0` | Seconds of silence before recording stops and sends to Whisper |
 | `SILENCE_THRESHOLD` | `0.08` | Mic sensitivity — lower if your mic is quiet |
 | `KOKORO_VOICE` | `af_heart` | Voice for Kokoro backend — `af_heart`, `af_sky`, `af_bella`, … |
 

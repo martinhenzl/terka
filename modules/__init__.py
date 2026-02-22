@@ -1,1 +1,1 @@
-# Terka — AI hlasová asistentka — moduly
+# Terka — AI voice assistant — modules

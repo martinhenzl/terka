@@ -22,6 +22,7 @@ import urllib.error
 import numpy as np
 import sounddevice as sd
 
+import config
 from config import (
     TTS_BACKEND,
     # Kokoro
@@ -34,7 +35,7 @@ from config import (
 )
 
 # ── Emotion tags ───────────────────────────────────────────────────────────────
-_EMOTION_RE = re.compile(r"^\[(\w+)\]\s*")
+_EMOTION_RE = re.compile(r"^\[([^\]]+)\]\s*")
 
 
 def extract_emotion(text: str) -> tuple[str, str]:
@@ -103,6 +104,7 @@ def _speak_kokoro(text: str) -> bool:
 
 _server_proc: subprocess.Popen | None = None
 _references_cache: list[dict] | None = None
+_references_cache_voice: str | None = None  # which CHARACTER_VOICE the cache was built for
 
 
 def _url(path: str = "") -> str:
@@ -124,18 +126,23 @@ def _is_server_alive() -> bool:
 
 
 def _load_references() -> list[dict]:
-    global _references_cache
-    if _references_cache is not None:
+    global _references_cache, _references_cache_voice
+    character = config.CHARACTER_VOICE
+    # Invalidate cache if character changed (e.g. set via -voice CLI arg)
+    if _references_cache is not None and _references_cache_voice == character:
         return _references_cache
 
     if not os.path.isdir(VOICE_SAMPLES_DIR):
         _references_cache = []
+        _references_cache_voice = character
         return _references_cache
 
     audio_exts = {".wav", ".mp3", ".flac"}
+    prefix = character + "_"
     files = [
         f for f in os.listdir(VOICE_SAMPLES_DIR)
         if os.path.splitext(f)[1].lower() in audio_exts
+        and f.lower().startswith(prefix.lower())
     ]
     files.sort(key=lambda f: os.path.getsize(os.path.join(VOICE_SAMPLES_DIR, f)))
     files = files[:VOICE_REFERENCES_MAX]
@@ -155,8 +162,9 @@ def _load_references() -> list[dict]:
     total_kb = sum(
         os.path.getsize(os.path.join(VOICE_SAMPLES_DIR, f)) for f in files
     ) // 1024
-    print(f"  Voice references cached: {len(refs)} file(s), {total_kb} KB")
+    print(f"  Voice references cached: {len(refs)} file(s), {total_kb} KB  [{character}]")
     _references_cache = refs
+    _references_cache_voice = character
     return _references_cache
 
 
@@ -225,25 +233,33 @@ def _start_fish_server() -> None:
             pass
     threading.Thread(target=_read_stderr, daemon=True).start()
 
-    TIMEOUT = 240
-    print(f"  Waiting for model load (up to {TIMEOUT}s on first start)...", flush=True)
-    for i in range(TIMEOUT):
+    TIMEOUT = 600  # real seconds; _is_server_alive() adds up to 6s per poll via urlopen
+    print(f"  Waiting for model load (up to {TIMEOUT // 60} min on first start)...", flush=True)
+    t_start = time.time()
+    last_report = 0
+    while True:
         time.sleep(1)
+        elapsed = int(time.time() - t_start)
+
         if _server_proc.poll() is not None:
             err = "\n".join(_stderr_lines[-40:])
             raise RuntimeError(f"Fish Speech server exited early:\n{err or '(no output)'}")
+
         if _is_server_alive():
-            print(f"  Fish Speech ready. ({i + 1}s)")
+            print(f"  Fish Speech ready. ({elapsed}s)", flush=True)
             _load_references()
             return
-        if (i + 1) % 15 == 0:
-            print(f"  Still loading... ({i + 1}/{TIMEOUT}s)", flush=True)
 
-    err = "\n".join(_stderr_lines[-40:])
-    raise RuntimeError(
-        f"Fish Speech server did not respond within {TIMEOUT}s.\n"
-        f"Last server output:\n{err or '(none)'}"
-    )
+        if elapsed - last_report >= 10:
+            last_report = elapsed
+            print(f"  Still loading... ({elapsed}s)", flush=True)
+
+        if elapsed >= TIMEOUT:
+            err = "\n".join(_stderr_lines[-40:])
+            raise RuntimeError(
+                f"Fish Speech server did not respond within {TIMEOUT}s.\n"
+                f"Last server output:\n{err or '(none)'}"
+            )
 
 
 def _speak_fish(text: str) -> bool:
@@ -376,6 +392,12 @@ def shutdown() -> None:
     if TTS_BACKEND == "fish" and _server_proc and _server_proc.poll() is None:
         _server_proc.terminate()
         _server_proc = None
+    # Explicitly terminate PortAudio before Python module cleanup runs.
+    # Prevents C++ exception (0xE06D7363) from audioses.dll on Windows exit.
+    try:
+        sd.terminate()
+    except Exception:
+        pass
 
 
 def speak(text: str) -> bool:

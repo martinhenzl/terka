@@ -1,16 +1,18 @@
 """
 Terka — AI voice assistant
-Run: python main.py
+Run:  python main.py             — manual mode (Enter to record)
+      python main.py -c          — continuous mode (auto-listen after each reply)
 """
 
 import sys
 import os
 import msvcrt
 import time
+import argparse
 
-# Přidej CUDA DLLs do PATH (nvidia-cublas-cu12, nvidia-cudnn-cu12 z pip)
-# Musíme přidat do PATH (ne jen os.add_dll_directory), aby ONNX Runtime
-# mohl najít závislé DLLy při načítání CUDA provideru.
+# Add CUDA DLLs to PATH (nvidia-cublas-cu12, nvidia-cudnn-cu12 from pip).
+# Must add to PATH (not just os.add_dll_directory) so ONNX Runtime
+# can find dependent DLLs when loading the CUDA provider.
 def _add_cuda_dlls() -> None:
     import site
     extra: list[str] = []
@@ -25,25 +27,50 @@ def _add_cuda_dlls() -> None:
 
 _add_cuda_dlls()
 
-BANNER = """
-╔══════════════════════════════════════════════╗
-║           T E R K A   —   AI chat           ║
-║           Voice assistant (EN)               ║
-╠══════════════════════════════════════════════╣
-║  Enter         → record voice               ║
-║  Esc           → interrupt (anytime)        ║
-║  Type text     → skip microphone            ║
-║  reset         → clear history              ║
-║  devices       → list microphones           ║
-║  quit / exit   → exit                       ║
-╚══════════════════════════════════════════════╝
-"""
+def _make_banner() -> str:
+    W = 46
+    top = "╔" + "═" * W + "╗"
+    mid = "╠" + "═" * W + "╣"
+    bot = "╚" + "═" * W + "╝"
+    def c(s): return "║" + s.center(W) + "║"
+    def r(s): return "║  " + s.ljust(W - 2) + "║"
+    return "\n".join([
+        "", top,
+        c("T E R K A   —   AI chat"),
+        c("Voice assistant (EN)"),
+        mid,
+        r("Enter         → record voice"),
+        r("Esc           → interrupt (anytime)"),
+        r("Type text     → skip microphone"),
+        r("reset         → clear history"),
+        r("devices       → list microphones"),
+        r("quit / exit   → exit"),
+        mid,
+        r("-c flag        → continuous listening mode"),
+        r("(Esc pauses, Enter resumes)"),
+        r("-voice jahoda  → switch voice character"),
+        r("-voice amber   → use Amber's voice"),
+        bot, "",
+    ])
+
+BANNER = _make_banner()
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(prog="python main.py", add_help=False)
+    parser.add_argument("-c", "--continuous", action="store_true",
+                        help="Continuous listening mode")
+    parser.add_argument("-voice", dest="voice", default=None,
+                        help="Voice character to use (e.g. jahoda, amber)")
+    args, _ = parser.parse_known_args()
+
+    if args.voice:
+        import config as _cfg
+        _cfg.CHARACTER_VOICE = args.voice.lower()
+
     print(BANNER)
 
-    # Import modulů až po zobrazení banneru
+    # Import modules after banner is shown
     from modules import stt, llm, tts
     from modules.audio import record_until_silence, list_input_devices
 
@@ -58,7 +85,7 @@ def main() -> None:
     # Pre-warm Whisper model (downloads automatically if missing)
     import numpy as np
     print()
-    stt.transcribe(np.zeros(1600, dtype="float32"))
+    stt.transcribe(np.zeros(1600, dtype="float32"), silent=True)
 
     # Start / verify TTS (Fish Speech server)
     print()
@@ -69,56 +96,107 @@ def main() -> None:
         sys.exit(1)
 
     print("\n[Terka is ready!]\n")
+
+    greeting = llm.greet()
+    if greeting:
+        _, clean_greeting = tts.extract_emotion(greeting)
+        print(f"Terka: {clean_greeting}\n")
+        tts.speak(greeting)
+
     audio_device: int | None = None
+    continuous = args.continuous
 
-    # ── Hlavní smyčka ─────────────────────────────────────────────────────────
+    if continuous:
+        print("[Continuous mode active — Esc to pause, Enter to resume]\n")
+
+    # ── Main loop ─────────────────────────────────────────────────────────────
     while True:
-        try:
-            user_input = input("You: ").strip()
-        except (KeyboardInterrupt, EOFError):
-            print("\nGoodbye!")
-            tts.shutdown()
-            break
+        user_input: str | None = None
 
-        # ── Commands ──────────────────────────────────────────────────────────
-        if not user_input:
-            # Empty Enter → record voice
-            audio = record_until_silence(device=audio_device)
-            if audio is None:
+        # ── Input acquisition ─────────────────────────────────────────────────
+        if continuous:
+            esc_flag = [False]
+            audio = record_until_silence(device=audio_device, esc_out=esc_flag)
+
+            if esc_flag[0]:
+                continuous = False
+                print("[Continuous paused — type text, or press Enter to resume]\n")
                 continue
 
-            print("  Transcribing...")
+            if audio is None:
+                continue  # too short / quiet — listen again
+
+            print("  Transcribing...", flush=True)
             text = stt.transcribe(audio)
             if not text.strip():
-                print("  Didn't catch that, try again.")
+                print("  Nothing recognized — listening again...")
                 continue
+
             user_input = text
+            print()
 
-        elif user_input.lower() in ("quit", "exit", "q"):
-            print("Terka: Bye bye! Saving my evil plans for later. Heheh~")
-            tts.speak("Bye bye! Saving my evil plans for later. Heheh.")
-            tts.shutdown()
-            break
-
-        elif user_input.lower() == "reset":
-            llm.reset_history()
-            continue
-
-        elif user_input.lower() in ("devices",):
-            list_input_devices()
+        else:
+            # Manual mode
             try:
-                idx = input("  Device number (Enter = default): ").strip()
-                audio_device = int(idx) if idx else None
-            except ValueError:
-                audio_device = None
-            continue
+                raw = input("You: ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\nGoodbye!")
+                stt.shutdown()
+                tts.shutdown()
+                os._exit(0)
 
-        elif user_input.lower() in ("help", "?"):
-            print(BANNER)
-            continue
+            if not raw:
+                if args.continuous:
+                    # Resume continuous mode with Enter
+                    continuous = True
+                    print("[Continuous mode resumed]\n")
+                    continue
+                else:
+                    # Single recording
+                    esc_flag = [False]
+                    audio = record_until_silence(device=audio_device, esc_out=esc_flag)
+                    if audio is None:
+                        continue
+                    print("  Transcribing...")
+                    text = stt.transcribe(audio)
+                    if not text.strip():
+                        print("  Didn't catch that, try again.")
+                        continue
+                    user_input = text
+                    print()
+
+            elif raw.lower() in ("quit", "exit", "q"):
+                farewell = llm.chat("(The user is leaving. Say a short playful goodbye — one sentence.)")
+                _, clean_farewell = tts.extract_emotion(farewell)
+                print(f"Terka: {clean_farewell}")
+                tts.speak(farewell)
+                stt.shutdown()
+                tts.shutdown()
+                os._exit(0)
+
+            elif raw.lower() == "reset":
+                llm.reset_history()
+                continue
+
+            elif raw.lower() == "devices":
+                list_input_devices()
+                try:
+                    idx = input("  Device number (Enter = default): ").strip()
+                    audio_device = int(idx) if idx else None
+                except ValueError:
+                    audio_device = None
+                continue
+
+            elif raw.lower() in ("help", "?"):
+                print(BANNER)
+                continue
+
+            else:
+                user_input = raw
+                print(f"\nYou: {user_input}")
 
         # ── Process message ───────────────────────────────────────────────────
-        print(f"\nYou: {user_input}")
+        assert user_input is not None
         print("Terka: ...", end="", flush=True)
 
         _esc = [False]
@@ -138,13 +216,20 @@ def main() -> None:
 
         if _esc[0] or not reply:
             print("\r  Interrupted.                      ")
+            if continuous:
+                continuous = False
+                print("[Continuous paused — press Enter to resume]\n")
             continue
 
         emotion, clean_reply = tts.extract_emotion(reply)
         print(f"\rTerka: {clean_reply}")
         print(f"  [LLM: {t_llm:.1f}s | {len(clean_reply.split())} words | {emotion}]")
 
-        tts.speak(reply)
+        interrupted = tts.speak(reply)
+
+        if interrupted and continuous:
+            continuous = False
+            print("\n[Continuous paused — press Enter to resume]\n")
 
 
 if __name__ == "__main__":
