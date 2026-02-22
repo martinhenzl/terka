@@ -1,5 +1,5 @@
 """
-STT modul — Speech to Text pomocí faster-whisper.
+STT module — Speech to Text using faster-whisper.
 """
 
 from __future__ import annotations
@@ -23,16 +23,16 @@ def _get_model() -> WhisperModel:
                 device = "cpu"
 
         compute_type = "float16" if device == "cuda" else "int8"
-        print(f"  Načítám Whisper '{WHISPER_MODEL_SIZE}' ({device}, {compute_type})...")
+        print(f"  Loading Whisper '{WHISPER_MODEL_SIZE}' ({device}, {compute_type})...")
         _model = WhisperModel(WHISPER_MODEL_SIZE, device=device, compute_type=compute_type)
-        print("  Whisper připraven.")
+        print("  Whisper ready.")
     return _model
 
 
 def transcribe(audio: np.ndarray) -> str:
     """
-    Přepíše numpy audio pole na text.
-    Vrací prázdný řetězec pokud nic nebylo rozpoznáno.
+    Transcribe a numpy audio array to text.
+    Returns empty string if nothing was recognized.
     """
     model = _get_model()
 
@@ -43,14 +43,16 @@ def transcribe(audio: np.ndarray) -> str:
         initial_prompt=WHISPER_INITIAL_PROMPT,
         vad_filter=True,
         vad_parameters={"min_silence_duration_ms": 400},
+        condition_on_previous_text=False,  # prevents hallucination loops
+        no_speech_threshold=0.6,           # drop near-silence segments
     )
 
     text = " ".join(seg.text for seg in segments).strip()
 
     if text:
         lang_info = f" [{info.language}, {info.language_probability:.0%}]"
-        print(f"  Rozpoznáno{lang_info}: {text}")
+        print(f"  Recognized{lang_info}: {text}")
     else:
-        print("  Nic nerozpoznáno.")
+        print("  Nothing recognized.")
 
     return text

@@ -1,5 +1,5 @@
 """
-Audio modul — záznam z mikrofonu s detekcí ticha.
+Audio module — microphone recording with silence detection.
 """
 
 from __future__ import annotations
@@ -15,23 +15,23 @@ from config import (
     MIN_RECORD_DURATION,
 )
 
-CHUNK_SIZE = 1024  # vzorků na blok
+CHUNK_SIZE = 1024  # samples per block
 
 
 def list_input_devices() -> None:
-    """Vypíše dostupná vstupní audio zařízení."""
-    print("\nDostupná vstupní zařízení:")
+    """Print available input audio devices."""
+    print("\nAvailable input devices:")
     for i, dev in enumerate(sd.query_devices()):
         if dev["max_input_channels"] > 0:
-            marker = " ← výchozí" if i == sd.default.device[0] else ""
+            marker = " ← default" if i == sd.default.device[0] else ""
             print(f"  [{i}] {dev['name']}{marker}")
     print()
 
 
 def record_until_silence(device: int | None = None) -> np.ndarray | None:
     """
-    Nahrává z mikrofonu dokud není detekováno ticho.
-    Vrací numpy float32 pole, nebo None pokud nic nezachytilo.
+    Record from microphone until silence is detected.
+    Returns numpy float32 array, or None if nothing was captured.
     """
     chunks: list[np.ndarray] = []
     silence_chunks   = 0
@@ -41,7 +41,7 @@ def record_until_silence(device: int | None = None) -> np.ndarray | None:
     required_silence = int(SILENCE_DURATION * chunks_per_sec)
     min_chunks       = int(MIN_RECORD_DURATION * chunks_per_sec)
 
-    print("\n  Poslouchám... (mluv, po tichu se automaticky zastavím — Esc = zrušit)")
+    print("\n  Listening... (speak, stops automatically on silence — Esc = cancel)")
 
     try:
         stream_kw: dict = dict(
@@ -56,11 +56,11 @@ def record_until_silence(device: int | None = None) -> np.ndarray | None:
         with sd.InputStream(**stream_kw) as stream:
             dots = 0
             while True:
-                # Esc = zrušit nahrávání
+                # Esc = cancel recording
                 if msvcrt.kbhit():
                     key = msvcrt.getch()
                     if key == b'\x1b':
-                        print("\r  Nahrávání zrušeno.          ")
+                        print("\r  Recording cancelled.          ")
                         return None
 
                 data, _ = stream.read(CHUNK_SIZE)
@@ -77,34 +77,34 @@ def record_until_silence(device: int | None = None) -> np.ndarray | None:
                     chunks.append(data.copy())
                     silence_chunks += 1
                     pct = int(silence_chunks / required_silence * 20)
-                    print(f"\r  [ticho {'░' * pct:<20}]", end="", flush=True)
+                    print(f"\r  [silence {'░' * pct:<20}]", end="", flush=True)
                     if silence_chunks >= required_silence:
                         break
 
                 else:
                     dots = (dots + 1) % 4
-                    print(f"\r  Čekám na řeč{'.' * dots}   ", end="", flush=True)
+                    print(f"\r  Waiting for speech{'.' * dots}   ", end="", flush=True)
 
     except KeyboardInterrupt:
         print()
         return None
     except Exception as e:
-        print(f"\n  [audio chyba]: {e}")
+        print(f"\n  [audio error]: {e}")
         return None
 
     print()
 
     if len(chunks) < min_chunks:
-        print("  Příliš krátké nebo tiché — zkus to znovu.")
+        print("  Too short or quiet — try again.")
         return None
 
     audio = np.concatenate(chunks, axis=0).flatten()
-    print(f"  Zachyceno {len(audio) / SAMPLE_RATE:.1f}s zvuku.")
+    print(f"  Captured {len(audio) / SAMPLE_RATE:.1f}s of audio.")
     return audio
 
 
 def play_audio(samples: np.ndarray, sample_rate: int) -> bool:
-    """Přehraje numpy pole jako audio. Vrací True pokud bylo přerušeno Escem."""
+    """Play a numpy array as audio. Returns True if interrupted by Esc."""
     import time
     sd.play(samples, samplerate=sample_rate)
     try:

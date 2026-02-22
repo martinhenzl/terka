@@ -30,6 +30,9 @@ voice_samples/*.flac
 # Whisper cache
 .cache/
 
+# Ollama setup binary
+OllamaSetup.exe
+
 # IDE
 .vscode/settings.json
 .idea/

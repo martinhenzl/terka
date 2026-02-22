@@ -1,11 +1,12 @@
 """
-Terka — AI hlasová asistentka
-Spusť: python main.py
+Terka — AI voice assistant
+Run: python main.py
 """
 
 import sys
 import os
 import msvcrt
+import time
 
 # Přidej CUDA DLLs do PATH (nvidia-cublas-cu12, nvidia-cudnn-cu12 z pip)
 # Musíme přidat do PATH (ne jen os.add_dll_directory), aby ONNX Runtime
@@ -27,14 +28,14 @@ _add_cuda_dlls()
 BANNER = """
 ╔══════════════════════════════════════════════╗
 ║           T E R K A   —   AI chat           ║
-║         Hlasová asistentka (open-source)     ║
+║           Voice assistant (EN)               ║
 ╠══════════════════════════════════════════════╣
-║  Enter         → nahrát hlas (mluv)          ║
-║  Esc           → přerušit (kdykoli)          ║
-║  Napsat text   → přeskočit mikrofon          ║
-║  reset         → smazat historii             ║
-║  zařízení      → zobrazit mikrofonů          ║
-║  quit / exit   → ukončit                     ║
+║  Enter         → record voice               ║
+║  Esc           → interrupt (anytime)        ║
+║  Type text     → skip microphone            ║
+║  reset         → clear history              ║
+║  devices       → list microphones           ║
+║  quit / exit   → exit                       ║
 ╚══════════════════════════════════════════════╝
 """
 
@@ -46,56 +47,56 @@ def main() -> None:
     from modules import stt, llm, tts
     from modules.audio import record_until_silence, list_input_devices
 
-    # ── Inicializace ─────────────────────────────────────────────────────────
-    print("[Inicializace...]\n")
+    # ── Initialization ────────────────────────────────────────────────────────
+    print("[Initializing...]\n")
 
-    # Zkontroluj Ollama
+    # Check Ollama
     if not llm.check_connection():
-        print("\nOllama není dostupná. Zkontroluj nastavení a zkus znovu.")
+        print("\nOllama not available. Check settings and try again.")
         sys.exit(1)
 
-    # Přednahraj Whisper model (stáhne se automaticky pokud chybí)
+    # Pre-warm Whisper model (downloads automatically if missing)
     import numpy as np
     print()
-    stt.transcribe(np.zeros(1600, dtype="float32"))  # pre-warm — stáhne model pokud chybí
+    stt.transcribe(np.zeros(1600, dtype="float32"))
 
-    # Přednahraj / ověř TTS (Fish Speech server)
+    # Start / verify TTS (Fish Speech server)
     print()
     try:
         tts.initialize()
     except Exception as e:
-        print(f"\n[CHYBA TTS] {e}")
+        print(f"\n[TTS ERROR] {e}")
         sys.exit(1)
 
-    print("\n[Terka je připravena!]\n")
+    print("\n[Terka is ready!]\n")
     audio_device: int | None = None
 
     # ── Hlavní smyčka ─────────────────────────────────────────────────────────
     while True:
         try:
-            user_input = input("Ty: ").strip()
+            user_input = input("You: ").strip()
         except (KeyboardInterrupt, EOFError):
-            print("\nNa shledanou!")
+            print("\nGoodbye!")
             tts.shutdown()
             break
 
-        # ── Příkazy ───────────────────────────────────────────────────────────
+        # ── Commands ──────────────────────────────────────────────────────────
         if not user_input:
-            # Prázdný Enter → záznam hlasu
+            # Empty Enter → record voice
             audio = record_until_silence(device=audio_device)
             if audio is None:
                 continue
 
-            print("  Přepisuji...")
+            print("  Transcribing...")
             text = stt.transcribe(audio)
             if not text.strip():
-                print("  Nic jsem neslyšela, zkus to znovu.")
+                print("  Didn't catch that, try again.")
                 continue
             user_input = text
 
-        elif user_input.lower() in ("quit", "exit", "konec", "q"):
-            print("Terka: Čau čau! Zlé plány si nechám na jindy. Fufufu~")
-            tts.speak("Čau čau! Zlé plány si nechám na jindy. Fufufu.")
+        elif user_input.lower() in ("quit", "exit", "q"):
+            print("Terka: Bye bye! Saving my evil plans for later. Heheh~")
+            tts.speak("Bye bye! Saving my evil plans for later. Heheh.")
             tts.shutdown()
             break
 
@@ -103,24 +104,23 @@ def main() -> None:
             llm.reset_history()
             continue
 
-        elif user_input.lower() in ("zařízení", "zarizeni", "devices"):
+        elif user_input.lower() in ("devices",):
             list_input_devices()
             try:
-                idx = input("  Číslo zařízení (Enter = výchozí): ").strip()
+                idx = input("  Device number (Enter = default): ").strip()
                 audio_device = int(idx) if idx else None
             except ValueError:
                 audio_device = None
             continue
 
-        elif user_input.lower() in ("help", "pomoc", "?"):
+        elif user_input.lower() in ("help", "?"):
             print(BANNER)
             continue
 
-        # ── Zpracování zprávy ─────────────────────────────────────────────────
-        print(f"\nTy: {user_input}")
+        # ── Process message ───────────────────────────────────────────────────
+        print(f"\nYou: {user_input}")
         print("Terka: ...", end="", flush=True)
 
-        # Esc přeruší generování mezi tokeny
         _esc = [False]
         def _stop_check() -> bool:
             if not _esc[0] and msvcrt.kbhit():
@@ -128,17 +128,22 @@ def main() -> None:
                     _esc[0] = True
             return _esc[0]
 
+        t_start = time.time()
         try:
             reply = llm.chat(user_input, stop_check=_stop_check)
         except Exception as e:
-            print(f"\r[CHYBA LLM]: {e}")
+            print(f"\r[LLM ERROR]: {e}")
             continue
+        t_llm = time.time() - t_start
 
         if _esc[0] or not reply:
-            print("\r  Přerušeno.                        ")
+            print("\r  Interrupted.                      ")
             continue
 
-        print(f"\rTerka: {reply}\n")
+        emotion, clean_reply = tts.extract_emotion(reply)
+        print(f"\rTerka: {clean_reply}")
+        print(f"  [LLM: {t_llm:.1f}s | {len(clean_reply.split())} words | {emotion}]")
+
         tts.speak(reply)
 
 
